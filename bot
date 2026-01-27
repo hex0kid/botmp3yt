@@ -1,0 +1,232 @@
+mport os
+import random
+from datetime import datetime
+from collections import defaultdict
+
+import yt_dlp
+from telegram import Update, ReplyKeyboardMarkup
+from telegram.ext import Application, MessageHandler, CommandHandler, ContextTypes, filters
+from telegram.request import HTTPXRequest
+from telegram.constants import ChatAction
+
+
+# =========================
+# НАСТРОЙКИ
+# =========================
+TOKEN = os.environ.get("BOT_TOKEN", "").strip() or "8330678502:AAGd0sPQk0YbvVHyrQGNCUCRHu1ZE9b6n2w"
+DOWNLOAD_DIR = "downloads"
+os.makedirs(DOWNLOAD_DIR, exist_ok=True)
+
+# Таймауты (чтобы не падало на отправке больших файлов)
+request = HTTPXRequest(
+    connect_timeout=30,
+    read_timeout=300,
+    write_timeout=300,
+    pool_timeout=30,
+)
+
+# Кнопки
+keyboard = ReplyKeyboardMarkup(
+    [["🎧 Скачать бит (просто пришли ссылку)", "ℹ️ Что умеет бот"]],
+    resize_keyboard=True
+)
+
+# Счётчик скачиваний (живёт пока бот работает)
+user_stats = defaultdict(int)
+
+
+# =========================
+# МОТИВАЦИЯ (ОЧЕНЬ МНОГО ВАРИАНТОВ)
+# =========================
+STARTS = [
+    "{name}, брат", "{name}, слушай сюда", "{name}, момент настал", "{name}, ща будет жара",
+    "{name}, не моргай", "{name}, соберись", "{name}, включай режим зверя", "{name}, по факту",
+    "{name}, время пришло", "{name}, давай по-взрослому",
+]
+
+VERBS = [
+    "разъеби", "уничтожь", "разнеси", "сотри", "сожри", "разорви", "раскатай", "порвись",
+    "прихлопни", "задуши", "забери", "вынеси", "сломай", "раздави"
+]
+
+TARGETS = [
+    "этот бит", "этот инструментал", "эту минусовку", "эту дорожку", "эту основу", "это дерьмо", "этот грув"
+]
+
+STYLE = [
+    "без жалости", "как будто тебе за это платят", "как будто это последний шанс",
+    "так, чтобы студия вспотела", "так, чтобы стены дрожали", "так, чтобы конкуренты молчали",
+    "так, чтобы соседи знали, что ты работаешь", "на максималках", "в ноль компромиссов",
+]
+
+PUNCH = [
+    "пусть у людей челюсть упадёт", "пусть это станет хитом", "пусть это станет легендой",
+    "пусть конкуренты удалят проекты", "пусть это будет разнос сезона", "пусть это будет преступление по звуку",
+    "пусть это будет звук, который не забывают", "пусть это будет трек, который боятся ставить"
+]
+
+EMOJI = ["🔥", "💣", "🎧", "🎤", "😈", "⚡", "🧨", "🚀", "💀", "🥶", "🩸"]
+
+DAY_LINES = [
+    "Днём тоже можно делать грязь, {name}. Давай красиво ☀️",
+    "{name}, дневной режим — это просто другой вид разъёба ☀️",
+    "{name}, сегодня отличный день, чтобы забрать сцену 🏆",
+    "{name}, включай свет и делай тень конкурентам ☀️",
+]
+
+NIGHT_LINES = [
+    "{name}, ночь создана для тёмных хитов 🌙",
+    "{name}, ща будет тёмный флоу, от которого дрожат стены 🖤",
+    "{name}, ночь, студия и ты — идеальная формула 😈",
+    "{name}, ночью биты умирают громче 🌙",
+]
+
+RARE_HYPE = [
+    "🩸 {name}, ЭТОТ БИТ БЫЛ ЖИВ ДО ВСТРЕЧИ С ТОБОЙ. БОЛЬШЕ НЕТ.",
+    "👑 {name}, сегодня ты не артист. Сегодня ты событие.",
+    "🚨 {name}, после этого трека индустрия уже не будет прежней.",
+    "💀 {name}, этот инструментал совершил ошибку, когда встретил тебя.",
+    "🔥 {name}, щас родится звук, который будут вспоминать годами.",
+    "⚡ {name}, ты только что поднял планку. Всем остальным — удачи.",
+    "🧨 {name}, это не запись. Это захват территории.",
+]
+
+def generate_hype(name: str, count: int) -> str:
+    hour = datetime.now().hour
+
+    # 5% шанс на легендарную фразу
+    if random.random() < 0.05:
+        return random.choice(RARE_HYPE).format(name=name)
+
+    day_or_night = random.choice(DAY_LINES if 6 <= hour < 20 else NIGHT_LINES).format(name=name)
+
+    # 2 строки: сборка из частей = миллионы комбинаций
+    line1 = f"{random.choice(STARTS).format(name=name)} — {random.choice(VERBS)} {random.choice(TARGETS)} {random.choice(STYLE)} {random.choice(EMOJI)}"
+    line2 = f"И да: {random.choice(PUNCH)} {random.choice(EMOJI)}"
+
+    stat = f"\n💿 Ты уже забрал {count} бит(ов) за эту сессию. Машина."
+
+    return day_or_night + "\n" + line1 + "\n" + line2 + stat
+
+
+# =========================
+# ХЭНДЛЕРЫ
+# =========================
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text(
+        "👋 Привет!\n\n"
+        "Я бот для артистов: качаю биты с YouTube и отдаю MP3 320 kbps.\n\n"
+        "✅ Просто пришли ссылку на YouTube.",
+        reply_markup=keyboard
+    )
+
+async def info_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text(
+        "ℹ️ Что я делаю:\n"
+        "• принимаю ссылку на YouTube\n"
+        "• скачиваю лучшее аудио\n"
+        "• конвертирую в MP3 320 kbps\n"
+        "• отправляю файл в чат\n"
+        "• после — даю жёсткую мотивацию 😈\n\n"
+        "Просто пришли ссылку."
+    )
+
+def looks_like_youtube(url: str) -> bool:
+    u = url.lower()
+    return ("youtube.com/" in u) or ("youtu.be/" in u)
+
+async def convert_and_send(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    text = (update.message.text or "").strip()
+
+    if text == "ℹ️ Что умеет бот":
+        await info_cmd(update, context)
+        return
+
+    # Нормальная проверка ссылки
+    if not looks_like_youtube(text):
+        await update.message.reply_text("Скинь ссылку именно на YouTube (youtube.com или youtu.be).")
+        return
+
+    url = text
+    await update.message.reply_text("🎵 Скачиваю и конвертирую в MP3 320kbps...")
+
+    ydl_opts = {
+        "format": "bestaudio/best",
+        "outtmpl": f"{DOWNLOAD_DIR}/%(id)s.%(ext)s",
+        "postprocessors": [{
+            "key": "FFmpegExtractAudio",
+            "preferredcodec": "mp3",
+            "preferredquality": "320",
+        }],
+        "concurrent_fragment_downloads": 8,  # ускоряет на многих видео
+        "retries": 5,
+        "fragment_retries": 5,
+        "socket_timeout": 30,
+        "quiet": True,
+    }
+
+    mp3_file = None
+    title = "audio"
+
+    try:
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(url, download=True)
+            vid = info.get("id")
+            title = info.get("title", "audio")
+
+            if not vid:
+                await update.message.reply_text("❌ Не смог получить данные видео.")
+                return
+
+            mp3_file = f"{DOWNLOAD_DIR}/{vid}.mp3"
+
+        await context.bot.send_chat_action(update.effective_chat.id, ChatAction.UPLOAD_DOCUMENT)
+
+        if not mp3_file or not os.path.exists(mp3_file):
+            await update.message.reply_text("❌ MP3 не найден. Проверь наличие ffmpeg на хостинге.")
+            return
+
+        # Отправляем как документ — обычно стабильнее и быстрее
+        safe_name = "".join(c for c in title if c not in '\\/:*?"<>|').strip()[:80] or "audio"
+        with open(mp3_file, "rb") as f:
+            await update.message.reply_document(
+                document=f,
+                filename=f"{safe_name}.mp3",
+                read_timeout=300,
+                write_timeout=300,
+                connect_timeout=30,
+                pool_timeout=30,
+            )
+
+        # Мотивация + счётчик
+        user = update.effective_user
+        name = user.first_name or "Брат"
+        user_stats[user.id] += 1
+
+        await update.message.reply_text(generate_hype(name, user_stats[user.id]))
+
+    except Exception as e:
+        await update.message.reply_text(f"❌ Ошибка: {e}")
+
+    finally:
+        # чистим файл
+        try:
+            if mp3_file and os.path.exists(mp3_file):
+                os.remove(mp3_file)
+        except:
+            pass
+
+
+def main():
+    if TOKEN == "8330678502:AAGd0sPQk0YbvVHyrQGNCUCRHu1ZE9b6n2w":
+        print("⚠️ Вставь токен в TOKEN или задай переменную окружения BOT_TOKEN.")
+    print("BOT STARTED ✅")
+
+    app = Application.builder().token(TOKEN).request(request).build()
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("info", info_cmd))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, convert_and_send))
+    app.run_polling()
+
+if __name__ == "__main__":
+    main()

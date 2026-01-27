@@ -215,6 +215,9 @@ async def convert_and_send(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 os.remove(mp3_file)
         except:
             pass
+from keep_alive import keep_alive
+# Запуск web-сервера для UptimeRobot
+keep_alive()
 
 
 def main():

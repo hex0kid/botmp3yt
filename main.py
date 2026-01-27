@@ -13,7 +13,7 @@ from telegram.constants import ChatAction
 # =========================
 # НАСТРОЙКИ
 # =========================
-TOKEN = os.environ.get("BOT_TOKEN", "").strip() or "8330678502:AAGd0sPQk0YbvVHyrQGNCUCRHu1ZE9b6n2w"
+TOKEN = os.environ.get("BOT_TOKEN", "").strip() or "8330678502:AAGd0sPQk0YbvVHyrQGNCUCRHu1ZE9b6n2w"  # Замените на свой токен
 DOWNLOAD_DIR = "downloads"
 os.makedirs(DOWNLOAD_DIR, exist_ok=True)
 
@@ -151,18 +151,15 @@ async def convert_and_send(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("🎵 Скачиваю и конвертирую в MP3 320kbps...")
 
     ydl_opts = {
-        "format": "bestaudio/best",
-        "outtmpl": f"{DOWNLOAD_DIR}/%(id)s.%(ext)s",
-        "postprocessors": [{
-            "key": "FFmpegExtractAudio",
-            "preferredcodec": "mp3",
-            "preferredquality": "320",
+        'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',  # Устанавливаем User-Agent
+        'format': 'bestaudio/best',  # Скачиваем лучший аудиоформат
+        'outtmpl': f'{DOWNLOAD_DIR}/%(id)s.%(ext)s',  # Указываем путь для сохранения файла
+        'postprocessors': [{
+            'key': 'FFmpegExtractAudio',  # Конвертируем в MP3
+            'preferredcodec': 'mp3',
+            'preferredquality': '320',  # Качество 320 kbps
         }],
-        "concurrent_fragment_downloads": 8,  # ускоряет на многих видео
-        "retries": 5,
-        "fragment_retries": 5,
-        "socket_timeout": 30,
-        "quiet": True,
+        'quiet': False,  # Убираем тихий режим (чтобы выводился лог)
     }
 
     mp3_file = None
@@ -215,9 +212,6 @@ async def convert_and_send(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 os.remove(mp3_file)
         except:
             pass
-from keep_alive import keep_alive
-# Запуск web-сервера для UptimeRobot
-keep_alive()
 
 
 def main():

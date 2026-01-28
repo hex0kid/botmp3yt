@@ -142,30 +142,30 @@ async def convert_and_send(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await info_cmd(update, context)
         return
 
-    # Нормальная проверка ссылки с обработкой ошибки
+    # Нормальная проверка ссылки
+    if not looks_like_youtube(text):
+        await update.message.reply_text("Скинь ссылку именно на YouTube (youtube.com или youtu.be).")
+        return
+
+    url = text
+    await update.message.reply_text("🎵 Скачиваю и конвертирую в MP3 320kbps...")
+
+    ydl_opts = {
+        'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',  # Устанавливаем User-Agent
+        'format': 'bestaudio/best',  # Скачиваем лучший аудиоформат
+        'outtmpl': f'{DOWNLOAD_DIR}/%(id)s.%(ext)s',  # Указываем путь для сохранения файла
+        'postprocessors': [{
+            'key': 'FFmpegExtractAudio',  # Конвертируем в MP3
+            'preferredcodec': 'mp3',
+            'preferredquality': '320',  # Качество 320 kbps
+        }],
+        'quiet': False,  # Убираем тихий режим (чтобы выводился лог)
+    }
+
+    mp3_file = None
+    title = "audio"
+
     try:
-        if not looks_like_youtube(text):
-            await update.message.reply_text("Скинь ссылку именно на YouTube (youtube.com или youtu.be).")
-            return
-
-        url = text
-        await update.message.reply_text("🎵 Скачиваю и конвертирую в MP3 320kbps...")
-
-        ydl_opts = {
-            'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',  # Устанавливаем User-Agent
-            'format': 'bestaudio/best',  # Скачиваем лучший аудиоформат
-            'outtmpl': f'{DOWNLOAD_DIR}/%(id)s.%(ext)s',  # Указываем путь для сохранения файла
-            'postprocessors': [{
-                'key': 'FFmpegExtractAudio',  # Конвертируем в MP3
-                'preferredcodec': 'mp3',
-                'preferredquality': '320',  # Качество 320 kbps
-            }],
-            'quiet': False,  # Убираем тихий режим (чтобы выводился лог)
-        }
-
-        mp3_file = None
-        title = "audio"
-
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=True)
             vid = info.get("id")
@@ -226,4 +226,3 @@ def main():
     app.run_polling()
 
 if __name__ == "__main__":
-    main()

@@ -1,5 +1,6 @@
 import os
 import random
+import re
 from datetime import datetime
 from collections import defaultdict
 
@@ -133,7 +134,7 @@ async def info_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 def looks_like_youtube(url: str) -> bool:
     u = url.lower()
-    return ("youtube.com/" in u) or ("youtu.be/" in u)
+    return ("youtube.com/" in u) or ("youtu.be/" in u) or ("youtube.com/watch" in u)
 
 async def convert_and_send(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = (update.message.text or "").strip()
@@ -147,19 +148,33 @@ async def convert_and_send(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Скинь ссылку именно на YouTube (youtube.com или youtu.be).")
         return
 
-    url = text
+    # ИЗВЛЕЧЕНИЕ ЧИСТОЙ ССЫЛКИ НА ВИДЕО
+    url = text.strip()
+    
+    # Паттерн для поиска ID видео в разных форматах ссылок
+    pattern = r'(?:v=|youtu\.be/|embed/|shorts/)([a-zA-Z0-9_-]{11})'
+    match = re.search(pattern, url)
+    
+    if not match:
+        await update.message.reply_text("❌ Не удалось найти ID видео в ссылке.")
+        return
+    
+    video_id = match.group(1)
+    # Формируем стандартную ссылку только на видео
+    clean_url = f"https://www.youtube.com/watch?v={video_id}"
+    
     await update.message.reply_text("🎵 Скачиваю и конвертирую в MP3 320kbps...")
 
     ydl_opts = {
-        'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',  # Устанавливаем User-Agent
-        'format': 'bestaudio/best',  # Скачиваем лучший аудиоформат
-        'outtmpl': f'{DOWNLOAD_DIR}/%(id)s.%(ext)s',  # Указываем путь для сохранения файла
+        'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+        'format': 'bestaudio/best',
+        'outtmpl': f'{DOWNLOAD_DIR}/%(id)s.%(ext)s',
         'postprocessors': [{
-            'key': 'FFmpegExtractAudio',  # Конвертируем в MP3
+            'key': 'FFmpegExtractAudio',
             'preferredcodec': 'mp3',
-            'preferredquality': '320',  # Качество 320 kbps
+            'preferredquality': '320',
         }],
-        'quiet': False,  # Убираем тихий режим (чтобы выводился лог)
+        'quiet': False,
     }
 
     mp3_file = None
@@ -167,7 +182,8 @@ async def convert_and_send(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(url, download=True)
+            # Используем clean_url вместо исходной ссылки
+            info = ydl.extract_info(clean_url, download=True)
             vid = info.get("id")
             title = info.get("title", "audio")
 
@@ -183,7 +199,7 @@ async def convert_and_send(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text("❌ MP3 не найден. Проверь наличие ffmpeg на хостинге.")
             return
 
-        # Отправляем как документ — обычно стабильнее и быстрее
+        # Отправляем как документ
         safe_name = "".join(c for c in title if c not in '\\/:*?"<>|').strip()[:80] or "audio"
         with open(mp3_file, "rb") as f:
             await update.message.reply_document(
@@ -227,3 +243,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
